@@ -1,0 +1,613 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>ALC 바코드 검수기 (17종 마스터)</title>
+  <script src="https://unpkg.com/@zxing/library@0.21.3/umd/index.min.js"></script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --primary: #3b82f6;
+      --ok: #16a34a;
+      --ok-bg: rgba(22, 163, 74, 0.2);
+      --ng: #dc2626;
+      --ng-bg: rgba(220, 38, 38, 0.22);
+      --warn: #f59e0b;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Pretendard", "Malgun Gothic", sans-serif; }
+    body { background: var(--bg); color: var(--text); min-height: 100vh; display: flex; flex-direction: column; }
+    header {
+      padding: 14px 16px;
+      background: #0b1120;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    header h1 { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.02em; }
+    .header-actions { display: flex; gap: 8px; }
+    button {
+      border: none; border-radius: 8px; padding: 9px 13px; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; transition: opacity 0.15s, transform 0.05s;
+    }
+    button:active { transform: scale(0.98); }
+    .btn-primary { background: var(--primary); color: #fff; }
+    .btn-secondary { background: var(--card); color: var(--text); border: 1px solid var(--border); }
+    .btn-danger { background: var(--ng); color: #fff; }
+    .btn-ok { background: var(--ok); color: #fff; }
+
+    main { flex: 1; padding: 14px; max-width: 540px; width: 100%; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; }
+
+    .camera-box {
+      position: relative;
+      background: #020617;
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+      aspect-ratio: 4 / 3;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    video { width: 100%; height: 100%; object-fit: cover; display: none; }
+    .camera-placeholder { text-align: center; padding: 20px; color: var(--muted); }
+    .camera-placeholder p { font-size: 0.9rem; margin-bottom: 12px; line-height: 1.45; }
+    .scan-guide {
+      position: absolute; inset: 18% 10%;
+      border: 2px dashed rgba(59, 130, 246, 0.85);
+      border-radius: 10px;
+      pointer-events: none;
+      display: none;
+    }
+    .scan-line {
+      position: absolute; left: 6%; right: 6%; top: 50%; height: 2px;
+      background: #ef4444; box-shadow: 0 0 8px #ef4444;
+      display: none; pointer-events: none;
+    }
+
+    .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .slot {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .slot.filled { border-color: var(--primary); }
+    .slot-label { font-size: 0.75rem; color: var(--muted); margin-bottom: 4px; display: flex; justify-content: space-between; }
+    .slot-value { font-size: 1.05rem; font-weight: 700; word-break: break-all; min-height: 24px; }
+    .slot-sub { font-size: 0.78rem; color: #cbd5e1; margin-top: 4px; min-height: 18px; }
+
+    .result-banner {
+      border-radius: 14px;
+      padding: 16px;
+      text-align: center;
+      border: 1px solid var(--border);
+      background: var(--card);
+      transition: all 0.2s;
+    }
+    .result-banner.ok { background: var(--ok-bg); border-color: var(--ok); }
+    .result-banner.ng { background: var(--ng-bg); border-color: var(--ng); }
+    .result-title { font-size: 1.45rem; font-weight: 800; letter-spacing: -0.02em; }
+    .result-banner.ok .result-title { color: #4ade80; }
+    .result-banner.ng .result-title { color: #f87171; }
+    .result-desc { font-size: 0.88rem; color: #e2e8f0; margin-top: 6px; line-height: 1.45; }
+
+    .manual-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .manual-box summary { font-size: 0.85rem; color: var(--muted); cursor: pointer; font-weight: 600; }
+    .manual-row { display: flex; gap: 8px; margin-top: 10px; }
+    input, textarea {
+      width: 100%; background: #0f172a; border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 9px 10px; font-size: 0.9rem;
+    }
+
+    .history-card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
+    }
+    .history-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 0.85rem; color: var(--muted); }
+    .history-list { list-style: none; display: flex; flex-direction: column; gap: 6px; max-height: 180px; overflow-y: auto; }
+    .history-item {
+      display: flex; justify-content: space-between; align-items: center;
+      background: #0f172a; padding: 8px 10px; border-radius: 8px; font-size: 0.82rem;
+    }
+    .badge { padding: 2px 7px; border-radius: 6px; font-weight: 700; font-size: 0.75rem; }
+    .badge-ok { background: var(--ok); color: #fff; }
+    .badge-ng { background: var(--ng); color: #fff; }
+
+    /* Modal */
+    .modal-backdrop {
+      position: fixed; inset: 0; background: rgba(2, 6, 23, 0.8);
+      display: none; align-items: center; justify-content: center; padding: 16px; z-index: 50;
+    }
+    .modal-backdrop.open { display: flex; }
+    .modal {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+      width: 100%; max-width: 480px; max-height: 85vh; overflow-y: auto; padding: 18px;
+    }
+    .modal h2 { font-size: 1.05rem; margin-bottom: 10px; }
+    .modal p, .modal li { font-size: 0.86rem; color: #cbd5e1; line-height: 1.5; }
+    .guide-box { background: #0f172a; border: 1px solid var(--border); border-radius: 10px; padding: 11px; margin: 10px 0; }
+    .guide-box strong { color: #60a5fa; display: block; margin-bottom: 4px; font-size: 0.85rem; }
+    .master-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.8rem; }
+    .master-table th, .master-table td { border-bottom: 1px solid var(--border); padding: 7px 6px; text-align: left; }
+    .master-table th { color: var(--muted); }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ALC 바코드 대조 검수기</h1>
+    <div class="header-actions">
+      <button class="btn-secondary" id="btnOpenMaster">마스터(17)</button>
+      <button class="btn-secondary" id="btnReset">초기화</button>
+    </div>
+  </header>
+
+  <main>
+    <div class="camera-box">
+      <video id="video" playsinline muted></video>
+      <div class="scan-guide" id="scanGuide"></div>
+      <div class="scan-line" id="scanLine"></div>
+      <div class="camera-placeholder" id="camPlaceholder">
+        <p>후면 카메라로 <strong>현품표 긴 바코드</strong>와<br/><strong>짧은 ALC 바코드</strong>를 순서 무관하게 스캔하세요.</p>
+        <button class="btn-primary" id="btnStartCam">카메라 스캔 시작</button>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button class="btn-secondary" id="btnStopCam" style="display:none;">카메라 중지</button>
+    </div>
+
+    <div class="slots">
+      <div class="slot" id="slotPart">
+        <div class="slot-label"><span>1. 현품표 품번</span><span id="partBadge">대기</span></div>
+        <div class="slot-value" id="partVal">-</div>
+        <div class="slot-sub" id="partInfo">긴 바코드 스캔 대기</div>
+      </div>
+      <div class="slot" id="slotAlc">
+        <div class="slot-label"><span>2. ALC 코드</span><span id="alcBadge">대기</span></div>
+        <div class="slot-value" id="alcVal">-</div>
+        <div class="slot-sub" id="alcInfo">짧은 바코드 스캔 대기</div>
+      </div>
+    </div>
+
+    <div class="result-banner" id="resultBanner">
+      <div class="result-title" id="resultTitle">스캔 대기 중</div>
+      <div class="result-desc" id="resultDesc">현품표 바코드와 ALC 바코드를 모두 스캔하면 일치 여부를 즉시 판정합니다.</div>
+    </div>
+
+    <details class="manual-box">
+      <summary>테스트 / 수동 바코드 입력 (카메라 없이 테스트)</summary>
+      <div class="manual-row">
+        <input type="text" id="manualInput" placeholder="예: UN9Y85333JI500 00030 380C 또는 RR1" />
+        <button class="btn-primary" id="btnManualSubmit">입력</button>
+      </div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">
+        <button class="btn-secondary" onclick="handleScannedText('UN9Y85333JI500 00030 380C')">샘플 현품표(85333-JI500)</button>
+        <button class="btn-secondary" onclick="handleScannedText('RR1')">샘플 ALC(RR1)</button>
+        <button class="btn-secondary" onclick="handleScannedText('GR1')">오류 ALC(GR1)</button>
+      </div>
+    </details>
+
+    <div class="history-card">
+      <div class="history-header">
+        <span>최근 검수 이력</span>
+        <button class="btn-secondary" style="padding:4px 8px; font-size:0.75rem;" id="btnClearHistory">기록 삭제</button>
+      </div>
+      <ul class="history-list" id="historyList"></ul>
+    </div>
+  </main>
+
+  <!-- 카메라 권한 안내 팝업 -->
+  <div class="modal-backdrop" id="permModal">
+    <div class="modal">
+      <h2>카메라 권한 허용 안내</h2>
+      <p id="permReason">브라우저에서 카메라 접근이 차단되었거나 권한이 허용되지 않았습니다. 아래 안내에 따라 권한을 켜주세요.</p>
+
+      <div class="guide-box">
+        <strong>1. iPhone / iPad (Safari · Chrome)</strong>
+        <p>휴대폰 <b>설정 &gt; 앱 &gt; Safari(또는 Chrome) &gt; 카메라</b>를 <b>허용</b>으로 변경한 뒤 아래 다시 요청 버튼을 눌러주세요.</p>
+      </div>
+
+      <div class="guide-box">
+        <strong>2. Android (Chrome)</strong>
+        <p>주소창 왼쪽 <b>설정(아이콘) &gt; 권한 &gt; 카메라</b>를 <b>허용</b>으로 바꾸거나, 휴대폰 <b>설정 &gt; 앱 &gt; Chrome &gt; 권한 &gt; 카메라</b>를 허용해 주세요.</p>
+      </div>
+
+      <div class="guide-box">
+        <strong>3. 카카오톡·메신저 내부 브라우저인 경우</strong>
+        <p>인앱 브라우저에서는 카메라가 차단될 수 있습니다. 우측 상단 메뉴에서 <b>다른 브라우저(Safari / Chrome)로 열기</b>를 선택해 주세요.</p>
+      </div>
+
+      <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:14px;">
+        <button class="btn-secondary" id="btnClosePerm">닫기</button>
+        <button class="btn-primary" id="btnRetryPerm">권한 다시 요청하기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 마스터 관리 팝업 -->
+  <div class="modal-backdrop" id="masterModal">
+    <div class="modal">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+        <h2 style="margin:0;">품번 - ALC 기준 마스터</h2>
+        <button class="btn-secondary" id="btnCloseMaster">닫기</button>
+      </div>
+      <p>총 <strong id="masterCount">17</strong>개 품목이 등록되어 있습니다.</p>
+      <div style="display:flex; gap:6px; margin-top:10px;">
+        <input type="text" id="newPart" placeholder="품번 (예: 85333-JI500)" />
+        <input type="text" id="newAlc" placeholder="ALC (예: RR1)" style="max-width:110px;" />
+        <button class="btn-primary" id="btnAddMaster" style="white-space:nowrap;">추가</button>
+      </div>
+      <table class="master-table">
+        <thead>
+          <tr><th>품번</th><th>ALC</th><th>사양/수량</th><th>삭제</th></tr>
+        </thead>
+        <tbody id="masterTbody"></tbody>
+      </table>
+      <div style="margin-top:12px; display:flex; justify-content:space-between;">
+        <button class="btn-secondary" id="btnResetDefaultMaster">기본 17종 복원</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const DEFAULT_MASTER = [
+      { part: "85331-G9000", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "일반", qty: 40, alc: "GL1" },
+      { part: "85331-G9500", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "일반", qty: 40, alc: "GL2" },
+      { part: "85331-JI500", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "일반", qty: 30, alc: "RE1" },
+      { part: "85331-JQ000", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "일반", qty: 30, alc: "RQ1" },
+      { part: "85331-T1000", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "일반", qty: 30, alc: "RG1" },
+      { part: "85331-T1200", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "선너프", qty: 30, alc: "RG2" },
+      { part: "85331-T4200", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "선너프", qty: 40, alc: "FS1" },
+      { part: "85333-G9050", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "일반", qty: 40, alc: "GR1" },
+      { part: "85333-G9550", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "선너프", qty: 40, alc: "GR2" },
+      { part: "85333-JI500", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "일반", qty: 30, alc: "RR1" },
+      { part: "85333-JQ000", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "일반", qty: 30, alc: "RH1" },
+      { part: "85333-T1000", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "일반", qty: 30, alc: "RJ1" },
+      { part: "85333-T1200", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "선너프", qty: 30, alc: "RJ2" },
+      { part: "85333-T4000", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "일반", qty: 40, alc: "RS1" },
+      { part: "85333-T4200", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "선너프", qty: 40, alc: "RS2" },
+      { part: "85431-JQ000", name: "BRKT ASSY-ASSIST HDL MTG FR,LH", spec: "선너프", qty: 30, alc: "RQ2" },
+      { part: "85433-JQ000", name: "BRKT ASSY-ASSIST HDL MTG RR,LH", spec: "선너프", qty: 30, alc: "RH2" }
+    ];
+
+    const STORAGE_KEY = "alc_checker_master_v2";
+    let masterList = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null") || [...DEFAULT_MASTER];
+
+    let scannedPart = null; // { raw, cleanPart, matchedItem }
+    let scannedAlc = null;  // string
+    let lastScanText = "";
+    let lastScanTime = 0;
+    let codeReader = null;
+    let activeStream = null;
+    let autoResetTimer = null;
+
+    function normalize(str) {
+      return String(str || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    }
+
+    function beep(type) {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        if (type === "ok") {
+          osc.frequency.setValueAtTime(880, ctx.currentTime);
+          osc.frequency.setValueAtTime(1174, ctx.currentTime + 0.09);
+          gain.gain.setValueAtTime(0.18, ctx.currentTime);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.22);
+        } else if (type === "ng") {
+          osc.type = "sawtooth";
+          osc.frequency.setValueAtTime(220, ctx.currentTime);
+          gain.gain.setValueAtTime(0.25, ctx.currentTime);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.45);
+          if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+        } else {
+          osc.frequency.setValueAtTime(660, ctx.currentTime);
+          gain.gain.setValueAtTime(0.12, ctx.currentTime);
+          osc.start();
+          osc.stop(ctx.currentTime + 0.08);
+        }
+      } catch (e) {}
+    }
+
+    function findPartFromLongBarcode(rawText) {
+      const norm = normalize(rawText);
+      for (const item of masterList) {
+        const normMasterPart = normalize(item.part);
+        if (normMasterPart && norm.includes(normMasterPart)) {
+          return item;
+        }
+      }
+      return null;
+    }
+
+    function handleScannedText(raw) {
+      const trimmed = String(raw || "").trim();
+      if (!trimmed) return;
+
+      const now = Date.now();
+      if (trimmed === lastScanText && now - lastScanTime < 1500) return;
+      lastScanText = trimmed;
+      lastScanTime = now;
+
+      const norm = normalize(trimmed);
+      if (!norm) return;
+
+      if (autoResetTimer) {
+        clearTimeout(autoResetTimer);
+        autoResetTimer = null;
+      }
+
+      // 짧은 코드(2~5자리): ALC 코드로 인식
+      if (norm.length >= 2 && norm.length <= 5) {
+        scannedAlc = norm;
+        beep("scan");
+      } else {
+        // 긴 바코드: 현품표 품번 추출
+        const matched = findPartFromLongBarcode(trimmed);
+        scannedPart = {
+          raw: trimmed,
+          matchedItem: matched,
+          displayPart: matched ? matched.part : norm.slice(0, 14)
+        };
+        beep("scan");
+      }
+
+      updateUI();
+      evaluateMatch();
+    }
+
+    function updateUI() {
+      const slotPart = document.getElementById("slotPart");
+      const slotAlc = document.getElementById("slotAlc");
+
+      if (scannedPart) {
+        slotPart.classList.add("filled");
+        document.getElementById("partBadge").textContent = "인식됨";
+        document.getElementById("partVal").textContent = scannedPart.displayPart;
+        document.getElementById("partInfo").textContent = scannedPart.matchedItem
+          ? `기준 ALC: ${scannedPart.matchedItem.alc} (${scannedPart.matchedItem.spec}/${scannedPart.matchedItem.qty}ea)`
+          : "마스터에 없는 품번입니다";
+      } else {
+        slotPart.classList.remove("filled");
+        document.getElementById("partBadge").textContent = "대기";
+        document.getElementById("partVal").textContent = "-";
+        document.getElementById("partInfo").textContent = "긴 바코드 스캔 대기";
+      }
+
+      if (scannedAlc) {
+        slotAlc.classList.add("filled");
+        document.getElementById("alcBadge").textContent = "인식됨";
+        document.getElementById("alcVal").textContent = scannedAlc;
+        document.getElementById("alcInfo").textContent = "ALC 바코드 스캔 완료";
+      } else {
+        slotAlc.classList.remove("filled");
+        document.getElementById("alcBadge").textContent = "대기";
+        document.getElementById("alcVal").textContent = "-";
+        document.getElementById("alcInfo").textContent = "짧은 바코드 스캔 대기";
+      }
+    }
+
+    function evaluateMatch() {
+      const banner = document.getElementById("resultBanner");
+      const title = document.getElementById("resultTitle");
+      const desc = document.getElementById("resultDesc");
+
+      if (!scannedPart || !scannedAlc) {
+        banner.className = "result-banner";
+        title.textContent = scannedPart ? "ALC 바코드를 스캔하세요" : "현품표 바코드를 스캔하세요";
+        desc.textContent = "나머지 바코드 1개를 추가로 인식하면 자동 판정됩니다.";
+        return;
+      }
+
+      const item = scannedPart.matchedItem;
+      if (!item) {
+        banner.className = "result-banner ng";
+        title.textContent = "NG — 미등록 품번";
+        desc.textContent = `인식된 품번(${scannedPart.displayPart})이 기준 마스터 17종에 없습니다.`;
+        beep("ng");
+        addHistory(scannedPart.displayPart, scannedAlc, false);
+        scheduleAutoReset(3000);
+        return;
+      }
+
+      const expectedAlc = normalize(item.alc);
+      if (expectedAlc === scannedAlc) {
+        banner.className = "result-banner ok";
+        title.textContent = `OK — 일치 (${scannedAlc})`;
+        desc.textContent = `${item.part} ↔ ALC ${item.alc} 정상 매칭 (${item.spec} · ${item.qty}개)`;
+        beep("ok");
+        addHistory(item.part, scannedAlc, true);
+        scheduleAutoReset(2200);
+      } else {
+        banner.className = "result-banner ng";
+        title.textContent = `NG — 불일치!`;
+        desc.textContent = `품번 ${item.part}의 정상 ALC는 [${item.alc}] 이지만, 스캔된 ALC는 [${scannedAlc}] 입니다.`;
+        beep("ng");
+        addHistory(item.part, `${scannedAlc} (기준:${item.alc})`, false);
+        scheduleAutoReset(3500);
+      }
+    }
+
+    function scheduleAutoReset(ms) {
+      autoResetTimer = setTimeout(() => {
+        resetScan();
+      }, ms);
+    }
+
+    function resetScan() {
+      scannedPart = null;
+      scannedAlc = null;
+      lastScanText = "";
+      updateUI();
+      const banner = document.getElementById("resultBanner");
+      banner.className = "result-banner";
+      document.getElementById("resultTitle").textContent = "스캔 대기 중";
+      document.getElementById("resultDesc").textContent = "현품표 바코드와 ALC 바코드를 모두 스캔하면 일치 여부를 즉시 판정합니다.";
+    }
+
+    function addHistory(part, alc, isOk) {
+      const list = document.getElementById("historyList");
+      const li = document.createElement("li");
+      li.className = "history-item";
+      const time = new Date().toTimeString().slice(0, 8);
+      li.innerHTML = `<span><b>${part}</b> · ${alc} <small style="color:#94a3b8">(${time})</small></span>
+        <span class="badge ${isOk ? "badge-ok" : "badge-ng"}">${isOk ? "OK" : "NG"}</span>`;
+      list.prepend(li);
+    }
+
+    function showPermissionModal(reasonText) {
+      if (reasonText) {
+        document.getElementById("permReason").textContent = reasonText;
+      }
+      document.getElementById("permModal").classList.add("open");
+    }
+
+    async function startCamera() {
+      if (!window.isSecureContext) {
+        showPermissionModal("현재 페이지가 보안 연결(HTTPS)이 아니어서 브라우저가 카메라를 차단했습니다. HTTPS 주소로 접속해 주세요.");
+        return;
+      }
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showPermissionModal("현재 브라우저에서 카메라 API를 지원하지 않습니다. Safari 또는 Chrome 브라우저로 열어주세요.");
+        return;
+      }
+
+      try {
+        // 먼저 브라우저 기본 권한 팝업 유도
+        const preStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+        preStream.getTracks().forEach(t => t.stop());
+
+        const videoEl = document.getElementById("video");
+        document.getElementById("camPlaceholder").style.display = "none";
+        videoEl.style.display = "block";
+        document.getElementById("scanGuide").style.display = "block";
+        document.getElementById("scanLine").style.display = "block";
+        document.getElementById("btnStopCam").style.display = "inline-block";
+
+        codeReader = new ZXing.BrowserMultiFormatReader();
+        await codeReader.decodeFromConstraints(
+          { video: { facingMode: { ideal: "environment" } } },
+          videoEl,
+          (result, err) => {
+            if (result) {
+              handleScannedText(result.getText());
+            }
+          }
+        );
+      } catch (err) {
+        stopCamera();
+        let msg = "카메라 권한이 거부되었거나 사용할 수 없습니다. 아래 안내에 따라 카메라 권한을 허용해 주세요.";
+        if (err && (err.name === "NotAllowedError" || err.name === "PermissionDeniedError")) {
+          msg = "카메라 접근 권한이 차단되어 있습니다. 휴대폰 또는 브라우저 설정에서 카메라를 '허용'으로 변경해 주세요.";
+        } else if (err && err.name === "NotFoundError") {
+          msg = "사용 가능한 후면 카메라를 찾지 못했습니다.";
+        }
+        showPermissionModal(msg);
+      }
+    }
+
+    function stopCamera() {
+      if (codeReader) {
+        try { codeReader.reset(); } catch (e) {}
+        codeReader = null;
+      }
+      const videoEl = document.getElementById("video");
+      if (videoEl.srcObject) {
+        videoEl.srcObject.getTracks().forEach(t => t.stop());
+        videoEl.srcObject = null;
+      }
+      videoEl.style.display = "none";
+      document.getElementById("scanGuide").style.display = "none";
+      document.getElementById("scanLine").style.display = "none";
+      document.getElementById("camPlaceholder").style.display = "block";
+      document.getElementById("btnStopCam").style.display = "none";
+    }
+
+    function renderMasterTable() {
+      const tbody = document.getElementById("masterTbody");
+      document.getElementById("masterCount").textContent = masterList.length;
+      tbody.innerHTML = "";
+      masterList.forEach((item, idx) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td><b>${item.part}</b></td><td><span style="color:#60a5fa;font-weight:700;">${item.alc}</span></td>
+          <td>${item.spec || "-"} / ${item.qty || "-"}</td>
+          <td><button class="btn-danger" style="padding:3px 7px;font-size:0.75rem;" onclick="removeMaster(${idx})">삭제</button></td>`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function saveMaster() {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(masterList));
+      renderMasterTable();
+    }
+
+    window.removeMaster = function(idx) {
+      masterList.splice(idx, 1);
+      saveMaster();
+    };
+
+    document.getElementById("btnStartCam").addEventListener("click", startCamera);
+    document.getElementById("btnStopCam").addEventListener("click", stopCamera);
+    document.getElementById("btnReset").addEventListener("click", resetScan);
+    document.getElementById("btnClearHistory").addEventListener("click", () => {
+      document.getElementById("historyList").innerHTML = "";
+    });
+
+    document.getElementById("btnManualSubmit").addEventListener("click", () => {
+      const inp = document.getElementById("manualInput");
+      handleScannedText(inp.value);
+      inp.value = "";
+    });
+
+    document.getElementById("btnClosePerm").addEventListener("click", () => {
+      document.getElementById("permModal").classList.remove("open");
+    });
+    document.getElementById("btnRetryPerm").addEventListener("click", () => {
+      document.getElementById("permModal").classList.remove("open");
+      startCamera();
+    });
+
+    document.getElementById("btnOpenMaster").addEventListener("click", () => {
+      renderMasterTable();
+      document.getElementById("masterModal").classList.add("open");
+    });
+    document.getElementById("btnCloseMaster").addEventListener("click", () => {
+      document.getElementById("masterModal").classList.remove("open");
+    });
+    document.getElementById("btnAddMaster").addEventListener("click", () => {
+      const part = document.getElementById("newPart").value.trim().toUpperCase();
+      const alc = normalize(document.getElementById("newAlc").value);
+      if (!part || !alc) return;
+      masterList.push({ part, name: "", spec: "-", qty: "-", alc });
+      document.getElementById("newPart").value = "";
+      document.getElementById("newAlc").value = "";
+      saveMaster();
+    });
+    document.getElementById("btnResetDefaultMaster").addEventListener("click", () => {
+      masterList = [...DEFAULT_MASTER];
+      saveMaster();
+    });
+  </script>
+</body>
+</html>
